@@ -1,6 +1,6 @@
 {
   "name": "waitrose",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CLI for Waitrose grocery shopping",
   "type": "module",
   "bin": {
