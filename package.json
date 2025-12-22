@@ -1,6 +1,6 @@
 {
   "name": "waitrose",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "CLI and API client for Waitrose grocery shopping",
   "type": "module",
   "main": "./waitrose.ts",
