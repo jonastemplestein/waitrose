@@ -1,8 +1,12 @@
 {
   "name": "waitrose",
   "version": "1.0.1",
-  "description": "CLI for Waitrose grocery shopping",
+  "description": "CLI and API client for Waitrose grocery shopping",
   "type": "module",
+  "main": "./waitrose.ts",
+  "exports": {
+    ".": "./waitrose.ts"
+  },
   "bin": {
     "waitrose": "./src/cli.ts"
   },
@@ -26,7 +30,8 @@
     "grocery",
     "cli",
     "shopping",
-    "bun"
+    "bun",
+    "api"
   ],
   "author": "Jonas Templestein",
   "license": "MIT",

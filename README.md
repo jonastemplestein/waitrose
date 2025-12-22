@@ -1,6 +1,6 @@
 # waitrose
 
-Unofficial CLI for Waitrose grocery shopping.
+Unofficial CLI and API client for Waitrose grocery shopping.
 
 ## Quick Start
 
@@ -11,10 +11,11 @@ bunx waitrose help
 ## Install
 
 ```bash
-bun add -g waitrose
+bun add -g waitrose   # CLI
+bun add waitrose      # Library
 ```
 
-## Usage
+## CLI Usage
 
 ```bash
 waitrose login          # Login (prompts for email/password)
@@ -22,6 +23,24 @@ waitrose trolley        # View trolley
 waitrose search "milk"  # Search products
 waitrose add <line-number> [quantity]
 waitrose help           # All commands
+```
+
+## Library Usage
+
+```typescript
+import { WaitroseClient } from "waitrose";
+
+const client = new WaitroseClient();
+await client.login(email, password);
+
+// Search products
+const results = await client.searchProducts("milk");
+
+// Add to trolley
+await client.addToTrolley("088903", 2);
+
+// Get trolley
+const trolley = await client.getTrolley();
 ```
 
 ## Authentication
