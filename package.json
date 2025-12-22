@@ -1,11 +1,15 @@
 {
-  "name": "waitrose-cli",
+  "name": "waitrose",
   "version": "1.0.0",
   "description": "CLI for Waitrose grocery shopping",
   "type": "module",
   "bin": {
     "waitrose": "./src/cli.ts"
   },
+  "files": [
+    "src",
+    "waitrose.ts"
+  ],
   "scripts": {
     "dev": "bun run src/cli.ts",
     "build": "bun build src/cli.ts --compile --outfile dist/waitrose",
@@ -21,8 +25,14 @@
     "waitrose",
     "grocery",
     "cli",
-    "shopping"
+    "shopping",
+    "bun"
   ],
   "author": "Jonas Templestein",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jonastemplestein/waitrose.git"
+  },
+  "homepage": "https://github.com/jonastemplestein/waitrose#readme"
 }

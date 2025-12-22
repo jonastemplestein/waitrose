@@ -2,10 +2,16 @@
 
 Unofficial CLI for Waitrose grocery shopping.
 
+## Quick Start
+
+```bash
+bunx waitrose help
+```
+
 ## Install
 
 ```bash
-bun install
+bun add -g waitrose
 ```
 
 ## Usage
