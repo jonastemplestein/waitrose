@@ -4,8 +4,12 @@
   "description": "CLI and API client for Waitrose grocery shopping",
   "type": "module",
   "main": "./waitrose.ts",
+  "types": "./waitrose.ts",
   "exports": {
-    ".": "./waitrose.ts"
+    ".": {
+      "import": "./waitrose.ts",
+      "types": "./waitrose.ts"
+    }
   },
   "bin": {
     "waitrose": "./src/cli.ts"

@@ -53,7 +53,7 @@ async function readLine(hidden = false): Promise<string> {
       
       // Check for newline
       if (result.includes("\n")) {
-        result = result.split("\n")[0].trim();
+        result = result.split("\n")[0]?.trim() ?? "";
         break;
       }
     }
@@ -305,7 +305,7 @@ async function cmdTrolley(args: string[], flags: Record<string, string | boolean
       }
 
       header("Totals");
-      log(`  Items: ${trolley.trolley.trolleyTotals.trolleyItemCounts?.noConflicts || trolley.trolley.trolleyItems.length}`);
+      log(`  Items: ${(trolley.trolley.trolleyTotals as any).trolleyItemCounts?.noConflicts || trolley.trolley.trolleyItems.length}`);
       log(`  Subtotal: ${formatPrice(trolley.trolley.trolleyTotals.itemTotalEstimatedCost)}`);
       if (trolley.trolley.trolleyTotals.savingsFromOffers) {
         log(`  Offer savings: ${formatPrice(trolley.trolley.trolleyTotals.savingsFromOffers)}`);
@@ -407,7 +407,7 @@ async function cmdSearch(args: string[], flags: Record<string, string | boolean>
       for (const product of results.products) {
         log(`  ${colors.bold}${product.name}${colors.reset}`);
         log(`    ${product.displayPrice} — Line: ${product.lineNumber}`);
-        if (product.promotions?.length) {
+        if (product.promotions?.[0]) {
           log(`    ${colors.green}${product.promotions[0].promotionDescription}${colors.reset}`);
         }
       }
@@ -733,7 +733,7 @@ function parseArgs(argv: string[]): { command: string; args: string[]; flags: Re
   const flags: Record<string, string | boolean> = {};
 
   for (let i = 1; i < argv.length; i++) {
-    const arg = argv[i];
+    const arg = argv[i]!;
     
     if (arg.startsWith("--")) {
       const key = arg.slice(2);

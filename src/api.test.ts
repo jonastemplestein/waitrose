@@ -160,9 +160,10 @@ describe("Orders", () => {
     const orders = await client.getPendingOrders(5);
     expect(Array.isArray(orders)).toBe(true);
 
-    if (orders.length > 0) {
-      expect(typeof orders[0].customerOrderId).toBe("string");
-      expect(typeof orders[0].status).toBe("string");
+    const firstOrder = orders[0];
+    if (firstOrder) {
+      expect(typeof firstOrder.customerOrderId).toBe("string");
+      expect(typeof firstOrder.status).toBe("string");
     }
   });
 
@@ -170,8 +171,9 @@ describe("Orders", () => {
     const orders = await client.getPreviousOrders(5);
     expect(Array.isArray(orders)).toBe(true);
 
-    if (orders.length > 0) {
-      expect(typeof orders[0].customerOrderId).toBe("string");
+    const firstOrder = orders[0];
+    if (firstOrder) {
+      expect(typeof firstOrder.customerOrderId).toBe("string");
     }
   });
 
@@ -199,9 +201,10 @@ describe("Slots", () => {
       const dates = await client.getSlotDates("DELIVERY");
       expect(Array.isArray(dates)).toBe(true);
 
-      if (dates.length > 0) {
-        expect(typeof dates[0].id).toBe("string");
-        expect(typeof dates[0].dayOfWeek).toBe("string");
+      const firstDate = dates[0];
+      if (firstDate) {
+        expect(typeof firstDate.id).toBe("string");
+        expect(typeof firstDate.dayOfWeek).toBe("string");
       }
     } catch (err) {
       // May fail if no delivery address configured
@@ -216,9 +219,10 @@ describe("Campaigns", () => {
     const campaigns = await client.getCampaigns();
     expect(Array.isArray(campaigns)).toBe(true);
 
-    if (campaigns.length > 0) {
-      expect(typeof campaigns[0].id).toBe("string");
-      expect(typeof campaigns[0].name).toBe("string");
+    const firstCampaign = campaigns[0];
+    if (firstCampaign) {
+      expect(typeof firstCampaign.id).toBe("string");
+      expect(typeof firstCampaign.name).toBe("string");
     }
   });
 });
@@ -232,7 +236,7 @@ describe("Product Search (REST API)", () => {
     expect(typeof results.totalMatches).toBe("number");
     expect(results.products.length).toBeGreaterThan(0);
 
-    const product = results.products[0];
+    const product = results.products[0]!;
     expect(typeof product.id).toBe("string");
     expect(typeof product.lineNumber).toBe("string");
     expect(typeof product.name).toBe("string");
