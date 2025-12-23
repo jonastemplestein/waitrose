@@ -345,7 +345,7 @@ export interface SearchQueryParams {
   sortBy?: SearchSortBy;
   /** Pagination offset (0-based) */
   start?: number;
-  /** Page size (defaults to 48) */
+  /** Page size (max 128 for search, 15 for orders) */
   size?: number;
   /** Search tags for filtering */
   searchTags?: SearchTag[];
@@ -701,7 +701,10 @@ export class WaitroseClient {
   // Orders
   // ==========================================================================
 
-  /** Get all orders (pending and previous) */
+  /** 
+   * Get all orders (pending and previous)
+   * @param limit Max number of orders per category (API max is 15)
+   */
   async getOrders(limit: number = 10): Promise<{ pending: Order[]; previous: Order[] }> {
     const [pending, previous] = await Promise.all([
       this.getPendingOrders(limit),
@@ -711,44 +714,46 @@ export class WaitroseClient {
     return { pending, previous };
   }
 
-  /** Get pending orders only */
+  /** 
+   * Get pending orders only
+   * @param limit Max number of orders to return (API max is 15)
+   */
   async getPendingOrders(limit: number = 10): Promise<Order[]> {
-    try {
-      const result = await this.graphql<{ data: { pendingOrders: { content: Order[] } } }>(
-        QUERIES.GetPendingOrders,
-        { 
-          getPendingOrdersInput: { 
-            size: limit, 
-            sortBy: "+",  // ASCENDING
-            statuses: ["PAYMENT_FAILED", "PLACED", "FULFIL", "PAID", "PICKED"]
-          } 
-        }
-      );
-      return result.data.pendingOrders?.content || [];
-    } catch {
-      // If the detailed query fails, return empty array
-      return [];
-    }
+    // API has a max page size of 15
+    const effectiveLimit = Math.min(limit, 15);
+    
+    const result = await this.graphql<{ data: { pendingOrders: { content: Order[] } } }>(
+      QUERIES.GetPendingOrders,
+      { 
+        getPendingOrdersInput: { 
+          size: effectiveLimit, 
+          sortBy: "+",  // ASCENDING
+          statuses: ["PAYMENT_FAILED", "PLACED", "FULFIL", "PAID", "PICKED"]
+        } 
+      }
+    );
+    return result.data.pendingOrders?.content || [];
   }
 
-  /** Get previous/completed orders */
+  /** 
+   * Get previous/completed orders
+   * @param limit Max number of orders to return (API max is 15)
+   */
   async getPreviousOrders(limit: number = 10): Promise<Order[]> {
-    try {
-      const result = await this.graphql<{ data: { previousOrders: { content: Order[] } } }>(
-        QUERIES.GetPreviousOrders,
-        { 
-          getPreviousOrdersInput: { 
-            size: limit, 
-            sortBy: "-",  // DESCENDING
-            statuses: ["COMPLETED", "CANCELLED", "REFUND_PENDING"]
-          } 
-        }
-      );
-      return result.data.previousOrders?.content || [];
-    } catch {
-      // If the query fails, return empty array
-      return [];
-    }
+    // API has a max page size of 15
+    const effectiveLimit = Math.min(limit, 15);
+    
+    const result = await this.graphql<{ data: { previousOrders: { content: Order[] } } }>(
+      QUERIES.GetPreviousOrders,
+      { 
+        getPreviousOrdersInput: { 
+          size: effectiveLimit, 
+          sortBy: "-",  // DESCENDING
+          statuses: ["COMPLETED", "CANCELLED", "REFUND_PENDING"]
+        } 
+      }
+    );
+    return result.data.previousOrders?.content || [];
   }
 
   /** Get details for a specific order */
@@ -905,7 +910,7 @@ export class WaitroseClient {
    * // Simple search
    * const results = await client.searchProducts("organic milk");
    * 
-   * // Search with options
+   * // Search with options (size defaults to API default, max ~128)
    * const results = await client.searchProducts("milk", {
    *   sortBy: "PRICE_LOW_2_HIGH",
    *   size: 24
@@ -1081,14 +1086,14 @@ export class WaitroseClient {
    * 
    * @example
    * ```ts
-   * // Get page 2 (products 48-95)
-   * const results = await client.searchProductsPage("milk", 2, 48);
+   * // Get page 2 (products 24-47)
+   * const results = await client.searchProductsPage("milk", 2, 24);
    * ```
    */
   async searchProductsPage(
     searchTerm: string,
     page: number,
-    pageSize: number = 48,
+    pageSize: number = 24,
     options: Omit<SearchQueryParams, "searchTerm" | "category" | "start" | "size"> = {}
   ): Promise<SearchResponse> {
     return this.searchProducts(searchTerm, {
