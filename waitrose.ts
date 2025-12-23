@@ -12,6 +12,7 @@
 
 const GRAPHQL_URL = "https://www.waitrose.com/api/graphql-prod/graph/live";
 const SEARCH_API_URL = "https://www.waitrose.com/api/content-prod/v2/cms/publish/productcontent";
+const PRODUCTS_API_URL = "https://www.waitrose.com/api/products-prod/v1/products";
 const CLIENT_ID = "ANDROID_APP";
 
 // ============================================================================
@@ -435,6 +436,21 @@ export interface SearchResponse {
   };
 }
 
+/** Product details from batch lookup by line numbers */
+export interface ProductDetail {
+  lineNumber: string;
+  name: string;
+  brandName?: string;
+  displayPrice?: string;
+  size?: string;
+  thumbnail?: string;
+  productImageUrls?: ProductImageUrls;
+  currentSaleUnitPrice?: {
+    price: Price;
+    quantity: Quantity;
+  };
+}
+
 /** Category information for browsing */
 export interface CategoryInfo {
   id: string;
@@ -702,8 +718,9 @@ export class WaitroseClient {
         QUERIES.GetPendingOrders,
         { 
           getPendingOrdersInput: { 
-            pageSize: limit, 
-            sortBy: "ASCENDING"
+            size: limit, 
+            sortBy: "+",  // ASCENDING
+            statuses: ["PAYMENT_FAILED", "PLACED", "FULFIL", "PAID", "PICKED"]
           } 
         }
       );
@@ -721,14 +738,15 @@ export class WaitroseClient {
         QUERIES.GetPreviousOrders,
         { 
           getPreviousOrdersInput: { 
-            pageSize: limit, 
-            sortBy: "DESCENDING"
+            size: limit, 
+            sortBy: "-",  // DESCENDING
+            statuses: ["COMPLETED", "CANCELLED", "REFUND_PENDING"]
           } 
         }
       );
       return result.data.previousOrders?.content || [];
     } catch {
-      // If the detailed query fails, return empty array
+      // If the query fails, return empty array
       return [];
     }
   }
@@ -948,6 +966,60 @@ export class WaitroseClient {
     return this.restApi("browse", {
       customerSearchRequest: { queryParams },
     });
+  }
+
+  /**
+   * Get product details by line numbers
+   * 
+   * @example
+   * ```ts
+   * const products = await client.getProductsByLineNumbers(["123456", "789012"]);
+   * console.log(products[0].name); // "Waitrose Organic Milk 2 Pints"
+   * ```
+   */
+  async getProductsByLineNumbers(lineNumbers: string[]): Promise<ProductDetail[]> {
+    if (lineNumbers.length === 0) {
+      return [];
+    }
+
+    // Join line numbers with + as per the API format
+    const lineNumbersParam = lineNumbers.join("+");
+    const url = `${PRODUCTS_API_URL}/${lineNumbersParam}`;
+
+    const params: Record<string, string> = {
+      view: "EXTENDED",
+      excludeLinesWithConflicts: "false",
+      filterByCustomerSlot: "false",
+    };
+
+    if (this.defaultBranchId) {
+      params.branchId = this.defaultBranchId;
+    }
+
+    const queryString = new URLSearchParams(params).toString();
+    const fullUrl = `${url}?${queryString}`;
+
+    const headers: Record<string, string> = {
+      "Accept": "application/json",
+      "User-Agent": "Waitrose/3.9.1 (Android)",
+    };
+
+    if (this.accessToken) {
+      headers["Authorization"] = `Bearer ${this.accessToken}`;
+    }
+
+    const response = await fetch(fullUrl, {
+      method: "GET",
+      headers,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`HTTP ${response.status}: ${text}`);
+    }
+
+    const result = await response.json() as { products?: ProductDetail[] };
+    return result.products || [];
   }
 
   /**
