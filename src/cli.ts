@@ -496,8 +496,29 @@ async function cmdOrder(args: string[], flags: Record<string, string | boolean>)
   await withAuth(async (client) => {
     const order = await client.getOrder(orderId);
     
+    // Fetch product names for all line numbers
+    const lineNumbers = order.orderLines.map(line => line.lineNumber);
+    let productMap: Map<string, string> = new Map();
+    
+    try {
+      const products = await client.getProductsByLineNumbers(lineNumbers);
+      for (const product of products) {
+        productMap.set(product.lineNumber, product.name);
+      }
+    } catch {
+      // If product lookup fails, we'll just show line numbers
+    }
+    
     if (json) {
-      log(JSON.stringify(order, null, 2));
+      // Include product names in JSON output
+      const enrichedOrder = {
+        ...order,
+        orderLines: order.orderLines.map(line => ({
+          ...line,
+          productName: productMap.get(line.lineNumber) || null,
+        })),
+      };
+      log(JSON.stringify(enrichedOrder, null, 2));
     } else {
       header(`Order ${order.customerOrderId}`);
       log(`  Status: ${order.status}`);
@@ -514,7 +535,9 @@ async function cmdOrder(args: string[], flags: Record<string, string | boolean>)
       header("Items");
       for (const line of order.orderLines) {
         const qty = line.quantity?.amount || line.estimatedQuantity?.amount || 1;
-        log(`  ${qty}x ${line.lineNumber} — ${formatPrice(line.totalPrice || line.estimatedTotalPrice)}`);
+        const name = productMap.get(line.lineNumber) || line.lineNumber;
+        log(`  ${qty}x ${name} — ${formatPrice(line.totalPrice || line.estimatedTotalPrice)}`);
+        log(`     ${colors.dim}Line: ${line.lineNumber}${colors.reset}`);
       }
 
       header("Totals");
