@@ -4,7 +4,7 @@ import WaitroseClient, { CheckoutOutcomeUnknownError } from "../waitrose.ts";
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
-function setup(overrides: { eligibility?: string; total?: number; currentOrder?: string; slot?: boolean; conflicts?: number; minimum?: boolean; status?: number; malformed?: boolean; network?: boolean } = {}) {
+function setup(overrides: { eligibility?: string; total?: number; currentOrder?: string; slot?: boolean; expired?: boolean; conflicts?: number; minimum?: boolean; status?: number; malformed?: boolean; network?: boolean } = {}) {
   const client = new WaitroseClient();
   Object.assign(client, { accessToken: "secret", customerOrderId: "stale-order" });
   const calls: { url: string; body: any; headers: Headers; redirect?: string }[] = [];
@@ -29,7 +29,7 @@ function setup(overrides: { eligibility?: string; total?: number; currentOrder?:
     }
     if (body.query.includes("query CurrentSlot")) {
       expect(body.variables.input.customerOrderId).toBe(overrides.currentOrder ?? "order-1");
-      return Response.json({ data: { currentSlot: overrides.slot === false ? null : { id: "slot-1" } } });
+      return Response.json({ data: { currentSlot: overrides.slot === false ? null : { slotType: "DELIVERY", startDateTime: "2030-01-01T10:00:00Z", endDateTime: "2030-01-01T11:00:00Z", expiryDateTime: overrides.expired ? "2020-01-01T00:00:00Z" : "2030-01-01T09:00:00Z" } } });
     }
     throw new Error("Unexpected request");
   }) as typeof fetch;
@@ -58,7 +58,7 @@ describe("APK instant checkout", () => {
   for (const [label, options] of Object.entries({
     ineligible: { eligibility: "NOT_ALLOWED" }, threshold: { eligibility: "THRESHOLD_EXCEEDED" },
     unknown: { eligibility: "NEW_STATE" }, price: { total: 51 }, order: { currentOrder: "order-2" },
-    slot: { slot: false }, conflicts: { conflicts: 1 }, minimum: { minimum: false },
+    slot: { slot: false }, expired: { expired: true }, conflicts: { conflicts: 1 }, minimum: { minimum: false },
   })) test(`blocks ${label} before placement`, async () => {
     const { client, placements } = setup(options);
     await expect(client.placeOrder(order)).rejects.toThrow();

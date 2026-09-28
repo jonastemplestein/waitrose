@@ -195,8 +195,16 @@ export interface CheckoutReview {
 /** The native instant-checkout response; not a payment-settlement receipt. */
 export interface PlacedOrder {
   customerOrderId: string;
-  totals: OrderTotals;
-  slots: OrderSlot[];
+  totals: { estimated: OrderTotals["estimated"] | null; actual: OrderTotals["actual"] | null };
+  slots: Array<{
+    branchId: number;
+    branchName: string;
+    type: string;
+    startDateTime: string;
+    endDateTime: string;
+    amendOrderCutoffDateTime?: string | null;
+    status?: string | null;
+  }>;
 }
 
 export class CheckoutOutcomeUnknownError extends Error {
@@ -704,7 +712,8 @@ export class WaitroseClient {
     if (trolley.trolley.orderId !== orderId) blockers.push("The trolley does not match the current order");
     if (trolley.failures?.length) blockers.push("Waitrose reported trolley failures");
     if (trolley.instantCheckout !== "ALLOWED") blockers.push(`Instant checkout is ${trolley.instantCheckout ?? "unknown"}; complete payment setup or checkout on the Waitrose website`);
-    if (trolley.checkoutReadiness?.slotTypeValid !== true || !slot) blockers.push("A valid delivery or collection slot is required");
+    if (trolley.checkoutReadiness?.slotTypeValid !== true || !slot || !["DELIVERY", "COLLECTION"].includes(slot.slotType ?? "") || !Number.isFinite(Date.parse(slot.startDateTime ?? "")) || !Number.isFinite(Date.parse(slot.endDateTime ?? ""))) blockers.push("A valid delivery or collection slot is required");
+    if (slot?.expiryDateTime && !(Date.parse(slot.expiryDateTime) > Date.now())) blockers.push("The slot reservation has expired or its expiry is unknown");
     if (!trolley.trolley.trolleyItems.length) blockers.push("The trolley is empty");
     if (trolley.trolley.trolleyTotals.minimumSpendThresholdMet !== true) blockers.push("The minimum spend requirement is not met or unknown");
     if (trolley.trolley.trolleyTotals.trolleyItemCounts?.hardConflicts !== 0) blockers.push("Resolve trolley conflicts before checkout");
@@ -721,7 +730,7 @@ export class WaitroseClient {
    * Totals are estimates; the provider can change them after this preflight.
    */
   async placeOrder(options: { orderId: string; expectedTotal: Price }): Promise<PlacedOrder> {
-    if (!options.orderId || !Number.isFinite(options.expectedTotal?.amount) || options.expectedTotal.amount < 0 || !options.expectedTotal.currencyCode) {
+    if (!/^[A-Za-z0-9_-]+$/.test(options.orderId) || !Number.isFinite(options.expectedTotal?.amount) || options.expectedTotal.amount < 0 || !options.expectedTotal.currencyCode) {
       throw new Error("A reviewed order ID and expected total/currency are required");
     }
     const review = await this.getCheckout();
@@ -747,7 +756,7 @@ export class WaitroseClient {
       throw new Error(`Waitrose checkout rejected (${response.status}). Check the order and checkout eligibility before retrying.`);
     }
     const placed = await response.json().catch(() => null) as PlacedOrder | null;
-    if (!placed || placed.customerOrderId !== options.orderId || !placed.totals || !Array.isArray(placed.slots)) {
+    if (!placed || placed.customerOrderId !== options.orderId || (!placed.totals || typeof placed.totals !== "object" || Array.isArray(placed.totals)) || !Array.isArray(placed.slots)) {
       throw new CheckoutOutcomeUnknownError(options.orderId);
     }
     return placed;
