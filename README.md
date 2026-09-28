@@ -247,3 +247,32 @@ Credentials stored in `~/.waitrose/config.json`
 ## License
 
 MIT
+
+### Checkout
+
+The Android app's instant-checkout flow is supported, including order submission
+using the account's existing payment setup:
+
+```typescript
+const review = await client.getCheckout();
+// Present review.trolley, review.slot, review.estimatedTotal and blockers.
+// After the user authorizes this order:
+if (review.canPlaceOrder) {
+  const placed = await client.placeOrder({
+    orderId: review.orderId,
+    expectedTotal: review.estimatedTotal,
+  });
+  console.log(placed.customerOrderId);
+}
+```
+
+CLI: `waitrose checkout`, then
+`waitrose place-order <id> --expected-total 50.00 --currency GBP --confirm`.
+Placement refreshes eligibility and compares the order ID and estimated total.
+The POST is never retried automatically. If `CheckoutOutcomeUnknownError` is
+raised, inspect that order with `getOrder` before retrying. Estimated totals can
+change upstream; this is not a price lock or a payment settlement receipt.
+
+If `canPlaceOrder` is false, resolve the returned blockers. Payment setup or
+challenges requiring the website use the returned `checkoutUrl`. No payment
+credentials are accepted by this library. [APK evidence and validation](docs/checkout-research.md).
