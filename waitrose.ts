@@ -156,6 +156,8 @@ export interface TrolleyItem {
 }
 
 export interface TrolleyTotals {
+  minimumSpendThresholdMet?: boolean;
+  trolleyItemCounts?: { hardConflicts: number; noConflicts: number; softConflicts: number };
   totalEstimatedCost: Price;
   itemTotalEstimatedCost: Price;
   deliveryCharge: Price | null;
@@ -164,6 +166,7 @@ export interface TrolleyTotals {
 }
 
 export interface Trolley {
+  amendingOrder?: boolean;
   orderId: string;
   trolleyItems: TrolleyItem[];
   trolleyTotals: TrolleyTotals;
@@ -171,9 +174,44 @@ export interface Trolley {
 }
 
 export interface TrolleyResponse {
+  instantCheckout?: "ALLOWED" | "NOT_ALLOWED" | "THRESHOLD_EXCEEDED" | string;
+  checkoutReadiness?: { slotTypeValid: boolean };
   products: TrolleyProduct[];
   trolley: Trolley;
   failures: ApiFailure[] | null;
+}
+
+export interface CheckoutReview {
+  orderId: string;
+  estimatedTotal: Price;
+  canPlaceOrder: boolean;
+  blockers: string[];
+  instantCheckout: string | null;
+  trolley: TrolleyResponse;
+  slot: CurrentSlot | null;
+  checkoutUrl: string;
+}
+
+/** The native instant-checkout response; not a payment-settlement receipt. */
+export interface PlacedOrder {
+  customerOrderId: string;
+  totals: { estimated: OrderTotals["estimated"] | null; actual: OrderTotals["actual"] | null };
+  slots: Array<{
+    branchId: number;
+    branchName: string;
+    type: string;
+    startDateTime: string;
+    endDateTime: string;
+    amendOrderCutoffDateTime?: string | null;
+    status?: string | null;
+  }>;
+}
+
+export class CheckoutOutcomeUnknownError extends Error {
+  constructor(public readonly orderId: string) {
+    super(`Checkout outcome is unknown for order ${orderId}. Check getOrder before retrying; the order may have been placed.`);
+    this.name = "CheckoutOutcomeUnknownError";
+  }
 }
 
 export interface OrderSlot {
@@ -622,6 +660,8 @@ export class WaitroseClient {
   /** Get the current shopping context */
   async getShoppingContext(): Promise<ShoppingContext> {
     const result = await this.graphql<{ data: { shoppingContext: ShoppingContext } }>(QUERIES.GetShoppingContext);
+    this.customerOrderId = result.data.shoppingContext.customerOrderId;
+    this.defaultBranchId = result.data.shoppingContext.defaultBranchId;
     return result.data.shoppingContext;
   }
 
@@ -659,6 +699,67 @@ export class WaitroseClient {
     );
 
     return result.data.getTrolley;
+  }
+
+  /** Review the current order using fresh context, eligibility, totals and slot. */
+  async getCheckout(): Promise<CheckoutReview> {
+    if (!this.accessToken) throw new Error("Login is required for checkout");
+    const context = await this.getShoppingContext();
+    const orderId = context.customerOrderId;
+    if (!orderId) throw new Error("No current order available for checkout");
+    const [trolley, slot] = await Promise.all([this.getTrolley(orderId), this.getCurrentSlot()]);
+    const blockers: string[] = [];
+    if (trolley.trolley.orderId !== orderId) blockers.push("The trolley does not match the current order");
+    if (trolley.failures?.length) blockers.push("Waitrose reported trolley failures");
+    if (trolley.instantCheckout !== "ALLOWED") blockers.push(`Instant checkout is ${trolley.instantCheckout ?? "unknown"}; complete payment setup or checkout on the Waitrose website`);
+    if (trolley.checkoutReadiness?.slotTypeValid !== true || !slot || !["DELIVERY", "COLLECTION"].includes(slot.slotType ?? "") || !Number.isFinite(Date.parse(slot.startDateTime ?? "")) || !Number.isFinite(Date.parse(slot.endDateTime ?? ""))) blockers.push("A valid delivery or collection slot is required");
+    if (slot?.expiryDateTime && !(Date.parse(slot.expiryDateTime) > Date.now())) blockers.push("The slot reservation has expired or its expiry is unknown");
+    if (!trolley.trolley.trolleyItems.length) blockers.push("The trolley is empty");
+    if (trolley.trolley.trolleyTotals.minimumSpendThresholdMet !== true) blockers.push("The minimum spend requirement is not met or unknown");
+    if (trolley.trolley.trolleyTotals.trolleyItemCounts?.hardConflicts !== 0) blockers.push("Resolve trolley conflicts before checkout");
+    const estimatedTotal = trolley.trolley.trolleyTotals.totalEstimatedCost;
+    if (!estimatedTotal || !Number.isFinite(estimatedTotal.amount) || estimatedTotal.amount < 0 || !estimatedTotal.currencyCode) blockers.push("The estimated total is unavailable");
+    return { orderId, estimatedTotal, canPlaceOrder: blockers.length === 0, blockers,
+      instantCheckout: trolley.instantCheckout ?? null, trolley, slot,
+      checkoutUrl: "https://www.waitrose.com/ecom/checkout" };
+  }
+
+  /**
+   * Place the reviewed order using the Android app's instant-checkout flow.
+   * Uses the account's existing payment setup. Never retries the placement POST.
+   * Totals are estimates; the provider can change them after this preflight.
+   */
+  async placeOrder(options: { orderId: string; expectedTotal: Price }): Promise<PlacedOrder> {
+    if (!/^[A-Za-z0-9_-]+$/.test(options.orderId) || !Number.isFinite(options.expectedTotal?.amount) || options.expectedTotal.amount < 0 || !options.expectedTotal.currencyCode) {
+      throw new Error("A reviewed order ID and expected total/currency are required");
+    }
+    const review = await this.getCheckout();
+    if (review.orderId !== options.orderId) throw new Error("The current order has changed; review checkout again");
+    if (!review.canPlaceOrder) throw new Error(`Checkout blocked: ${review.blockers.join("; ")}`);
+    if (review.estimatedTotal.amount !== options.expectedTotal.amount || review.estimatedTotal.currencyCode !== options.expectedTotal.currencyCode) {
+      throw new Error("The estimated total has changed; review checkout again");
+    }
+    let response: Response;
+    try {
+      response = await fetch(`https://www.waitrose.com/api/order-orchestration-prod/v1/orders/${encodeURIComponent(options.orderId)}/place`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${this.accessToken}`, "User-Agent": "Waitrose/3.9.1 (Android)" },
+        body: JSON.stringify({ instantCheckout: true, event: "PLACE" }),
+        redirect: "manual",
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      throw new CheckoutOutcomeUnknownError(options.orderId);
+    }
+    if (!response.ok) {
+      if (response.status >= 500 || response.status === 408) throw new CheckoutOutcomeUnknownError(options.orderId);
+      throw new Error(`Waitrose checkout rejected (${response.status}). Check the order and checkout eligibility before retrying.`);
+    }
+    const placed = await response.json().catch(() => null) as PlacedOrder | null;
+    if (!placed || placed.customerOrderId !== options.orderId || (!placed.totals || typeof placed.totals !== "object" || Array.isArray(placed.totals)) || !Array.isArray(placed.slots)) {
+      throw new CheckoutOutcomeUnknownError(options.orderId);
+    }
+    return placed;
   }
 
   /** Add or update items in the trolley */
@@ -1106,4 +1207,3 @@ export class WaitroseClient {
 
 // Export for default usage
 export default WaitroseClient;
-

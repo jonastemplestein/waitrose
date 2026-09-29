@@ -148,6 +148,11 @@ ${colors.bold}OPTIONS${colors.reset}
   --json                       Output as JSON
   -n, --count <number>         Limit results (default: 10)
 
+${colors.bold}CHECKOUT${colors.reset}
+  checkout                    Review current order, slot, total and eligibility
+  place-order <id> --expected-total <amount> --currency <code> --confirm
+                              Place reviewed order with existing payment setup
+
 ${colors.bold}ENVIRONMENT${colors.reset}
   WAITROSE_USERNAME            Email for auto-login
   WAITROSE_PASSWORD            Password for auto-login
@@ -815,6 +820,21 @@ async function main() {
       case "browse":
         await cmdBrowse(args, flags);
         break;
+      case "checkout":
+        log(JSON.stringify(await withAuth(client => client.getCheckout()), null, 2));
+        break;
+      case "place-order": {
+        const orderId = args[0];
+        const total = flags["expected-total"];
+        const currency = flags.currency;
+        if (!orderId || typeof total !== "string" || !total.trim() || typeof currency !== "string" || flags.confirm !== true) {
+          throw new Error("Usage: waitrose place-order <order-id> --expected-total <amount> --currency <code> --confirm. Review with 'waitrose checkout' first.");
+        }
+        // Payment submission must never pass through withAuth's retry wrapper.
+        const client = await getAuthenticatedClient();
+        log(JSON.stringify(await client.placeOrder({ orderId, expectedTotal: { amount: Number(total), currencyCode: currency } }), null, 2));
+        break;
+      }
       case "orders":
         await cmdOrders(args, flags);
         break;
