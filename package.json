@@ -12,10 +12,11 @@
     }
   },
   "bin": {
-    "waitrose": "./src/cli.ts"
+    "waitrose": "src/cli.ts"
   },
   "files": [
     "src",
+    "!src/*.test.ts",
     "waitrose.ts"
   ],
   "scripts": {

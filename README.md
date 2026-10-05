@@ -245,6 +245,14 @@ Alternatively, run `waitrose login` which prompts for credentials and stores the
 
 Credentials stored in `~/.waitrose/config.json`
 
+## Releasing
+
+Change `version` in `package.json` and merge to `main`. The [Publish to npm](.github/workflows/publish.yml) workflow publishes that version with provenance. It does nothing if npm already has the version. It runs the type check and the checkout tests first. The other tests log in to a real Waitrose account, so run them locally:
+
+```bash
+WAITROSE_USERNAME=... WAITROSE_PASSWORD=... bun test
+```
+
 ## License
 
 MIT

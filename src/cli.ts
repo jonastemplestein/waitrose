@@ -15,8 +15,9 @@
 import WaitroseClient, { type SlotType, type UnitOfMeasure } from "../waitrose.js";
 import { loadConfig, saveConfig, clearConfig, CONFIG_FILE } from "./config.js";
 import { withAuth, getAuthenticatedClient } from "./auth.js";
+import packageJson from "../package.json" with { type: "json" };
 
-const VERSION = "1.2.2";
+const VERSION = packageJson.version;
 const GROCERIES_CATEGORY_ID = "10051";
 
 // ANSI colors for terminal output

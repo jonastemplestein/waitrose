@@ -1,0 +1,36 @@
+name: Publish to npm
+# Every push to main publishes the version in package.json, unless npm already has it.
+# No token: npm trusts this workflow file. Set it up once on npmjs.com:
+# waitrose → Settings → Trusted Publisher → GitHub Actions
+# (user jonastemplestein, repository waitrose, workflow publish.yml).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing and provenance
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+      # The other test files log in to a real Waitrose account and change its trolley.
+      - run: bun test src/checkout.test.ts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+      - name: Publish unless npm already has this version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if npm view "waitrose@$version" version > /dev/null 2>&1; then
+            echo "waitrose@$version is already on npm"
+          else
+            npm publish
+          fi
