@@ -16,7 +16,8 @@ import WaitroseClient, { type SlotType, type UnitOfMeasure } from "../waitrose.j
 import { loadConfig, saveConfig, clearConfig, CONFIG_FILE } from "./config.js";
 import { withAuth, getAuthenticatedClient } from "./auth.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.2.2";
+const GROCERIES_CATEGORY_ID = "10051";
 
 // ANSI colors for terminal output
 const colors = {
@@ -124,7 +125,7 @@ ${colors.bold}TROLLEY${colors.reset}
 
 ${colors.bold}SEARCH${colors.reset}
   search <term> [-n count]     Search for products
-  browse <category> [-n count] Browse products by category
+  browse [id] [-n count]       Browse a category (default: Groceries)
 
 ${colors.bold}ORDERS${colors.reset}
   orders                       List pending and previous orders
@@ -421,15 +422,9 @@ async function cmdSearch(args: string[], flags: Record<string, string | boolean>
 }
 
 async function cmdBrowse(args: string[], flags: Record<string, string | boolean>) {
-  const category = args.join("/");
+  const category = args[0] || GROCERIES_CATEGORY_ID;
   const count = parseInt(flags.n as string || flags.count as string || "10", 10);
   const json = flags.json === true;
-
-  if (!category) {
-    error("Usage: waitrose browse <category>");
-    log("  Example: waitrose browse groceries/bakery/bread");
-    process.exit(1);
-  }
 
   await withAuth(async (client) => {
     const results = await client.browseProducts(category, { size: count });
@@ -437,8 +432,23 @@ async function cmdBrowse(args: string[], flags: Record<string, string | boolean>
     if (json) {
       log(JSON.stringify(results, null, 2));
     } else {
+      const subCategories = results.subCategories?.filter(c => !c.hiddenInNav) ?? [];
+      if (results.totalMatches === 0 && subCategories.length === 0) {
+        error(`No products found for category "${category}"`);
+        log(`  Category IDs are listed by "waitrose browse"; path slugs like groceries/bakery no longer work.`);
+        process.exit(1);
+      }
+
       header(`Browse: ${category} (${results.totalMatches} products)`);
-      
+
+      if (subCategories.length > 0) {
+        log(`  ${colors.bold}Subcategories${colors.reset}`);
+        for (const sub of subCategories) {
+          log(`    ${sub.name} (${sub.expectedResults}) — ${sub.categoryId}`);
+        }
+        log("");
+      }
+
       if (results.products.length === 0) {
         log("  No products found");
         return;
@@ -871,4 +881,3 @@ async function main() {
 }
 
 main();
-

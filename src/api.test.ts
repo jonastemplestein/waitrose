@@ -183,6 +183,24 @@ describe("Orders", () => {
     expect(Array.isArray(pending)).toBe(true);
     expect(Array.isArray(previous)).toBe(true);
   });
+
+  test("getOrder returns historical items whose product names can be resolved", async () => {
+    const previous = await client.getPreviousOrders(1);
+    if (previous.length === 0) {
+      console.log("      (skipped: account has no previous orders)");
+      return;
+    }
+
+    const order = await client.getOrder(previous[0]!.customerOrderId);
+    expect(order.orderLines.length).toBeGreaterThan(0);
+
+    const uniqueLineNumbers = [...new Set(order.orderLines.map(line => line.lineNumber))];
+    const products = await client.getProductsByLineNumbers(uniqueLineNumbers);
+    const namesByLineNumber = new Map(products.map(product => [product.lineNumber, product.name]));
+
+    expect(products.length).toBe(uniqueLineNumbers.length);
+    expect(uniqueLineNumbers.every(lineNumber => namesByLineNumber.has(lineNumber))).toBe(true);
+  });
 });
 
 describe("Slots", () => {
@@ -269,11 +287,21 @@ describe("Product Search (REST API)", () => {
   });
 
   test("browseProducts returns results", async () => {
-    const results = await client.browseProducts("groceries/bakery");
+    const results = await client.browseProducts("10051");
 
     expect(results).toBeDefined();
     expect(Array.isArray(results.products)).toBe(true);
     expect(typeof results.totalMatches).toBe("number");
+    expect(results.products.length).toBeGreaterThan(0);
+    expect(results.subCategories?.length).toBeGreaterThan(0);
+  });
+
+  test("browseProducts can drill into a subcategory", async () => {
+    const root = await client.browseProducts("10051");
+    const sub = root.subCategories!.find(c => !c.hiddenInNav && c.expectedResults > 0)!;
+
+    const results = await client.browseProducts(sub.categoryId, { size: 5 });
+    expect(results.products.length).toBeGreaterThan(0);
   });
 });
 
@@ -289,4 +317,3 @@ describe("Session Management", () => {
     expect(client.isAuthenticated()).toBe(true);
   });
 });
-

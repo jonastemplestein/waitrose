@@ -6,7 +6,7 @@
 import { homedir } from "os";
 import { join } from "path";
 
-const CONFIG_DIR = join(homedir(), ".waitrose");
+const CONFIG_DIR = process.env.WAITROSE_CONFIG_DIR || join(homedir(), ".waitrose");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 export interface WaitroseConfig {
@@ -72,4 +72,3 @@ export function isTokenExpired(config: WaitroseConfig): boolean {
 }
 
 export { CONFIG_FILE, CONFIG_DIR };
-

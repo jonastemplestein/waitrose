@@ -9,8 +9,18 @@
  *   WAITROSE_PASSWORD - Your Waitrose account password
  */
 
-import { describe, test, expect, beforeAll } from "bun:test";
+import { describe, test, expect, afterAll } from "bun:test";
 import { $ } from "bun";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+const CLI_CONFIG_DIR = join(tmpdir(), `waitrose-cli-test-${process.pid}`);
+process.env.WAITROSE_CONFIG_DIR = CLI_CONFIG_DIR;
+
+afterAll(async () => {
+  await rm(CLI_CONFIG_DIR, { recursive: true, force: true });
+});
 
 // Helper to run CLI commands
 async function cli(args: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -133,23 +143,45 @@ describe("CLI Trolley", () => {
 
   // Use a known test product
   const TEST_LINE_NUMBER = "088903"; // Waitrose Fairtrade Bananas
+  let testItemInitialQty = 0;
+  let trolleyChanged = false;
+
+  afterAll(async () => {
+    if (!trolleyChanged) return;
+    await cli(testItemInitialQty === 0
+      ? `remove ${TEST_LINE_NUMBER}`
+      : `add ${TEST_LINE_NUMBER} ${testItemInitialQty}`);
+  });
 
   test("add item to trolley", async () => {
-    const result = await cli(`add ${TEST_LINE_NUMBER} 1`);
+    const before = await cliJson<{
+      trolley: { trolleyItems: Array<{ lineNumber: string; quantity: { amount: number } }> };
+    }>("trolley");
+    testItemInitialQty = before.trolley.trolleyItems.find(
+      item => item.lineNumber === TEST_LINE_NUMBER
+    )?.quantity.amount ?? 0;
+
+    const result = await cli(`add ${TEST_LINE_NUMBER} ${testItemInitialQty + 1}`);
     expect(result.exitCode).toBe(0);
     expect(stripAnsi(result.stdout)).toContain("Added");
+    trolleyChanged = true;
   });
 
   test("verify item in trolley", async () => {
-    const data = await cliJson<{ trolley: { trolleyItems: Array<{ lineNumber: string }> } }>("trolley");
+    const data = await cliJson<{
+      trolley: { trolleyItems: Array<{ lineNumber: string; quantity: { amount: number } }> };
+    }>("trolley");
     const item = data.trolley.trolleyItems.find(i => i.lineNumber === TEST_LINE_NUMBER);
     expect(item).toBeDefined();
+    expect(item!.quantity.amount).toBe(testItemInitialQty + 1);
   });
 
-  test("remove item from trolley", async () => {
-    const result = await cli(`remove ${TEST_LINE_NUMBER}`);
+  test("restore original trolley state", async () => {
+    const result = await cli(testItemInitialQty === 0
+      ? `remove ${TEST_LINE_NUMBER}`
+      : `add ${TEST_LINE_NUMBER} ${testItemInitialQty}`);
     expect(result.exitCode).toBe(0);
-    expect(stripAnsi(result.stdout)).toContain("Removed");
+    trolleyChanged = false;
   });
 });
 
@@ -176,13 +208,26 @@ describe("CLI Search", () => {
   });
 
   test("browse category returns results", async () => {
-    const result = await cli("browse groceries/bakery -n 5");
+    const result = await cli("browse 10051 -n 5");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Browse:");
+    expect(stripAnsi(result.stdout)).toContain("Subcategories");
+  });
+
+  test("browse defaults to Groceries", async () => {
+    const result = await cli("browse -n 1");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Browse: 10051");
+  });
+
+  test("browse fails with a hint for unknown categories", async () => {
+    const result = await cli("browse groceries/bakery");
+    expect(result.exitCode).toBe(1);
+    expect(stripAnsi(result.stdout + result.stderr)).toContain("No products found");
   });
 
   test("browse --json returns valid JSON", async () => {
-    const result = await cli("browse groceries/bakery -n 5 --json");
+    const result = await cli("browse 10051 -n 5 --json");
     // API sometimes times out, allow that
     if (result.exitCode !== 0 && result.stderr.includes("504")) {
       console.log("      (skipped due to API timeout)");
@@ -192,6 +237,7 @@ describe("CLI Search", () => {
     const data = JSON.parse(result.stdout);
     expect(Array.isArray(data.products)).toBe(true);
     expect(typeof data.totalMatches).toBe("number");
+    expect(data.products.length).toBeGreaterThan(0);
   });
 });
 
@@ -268,4 +314,3 @@ describe("CLI Logout", () => {
     expect(stripAnsi(result.stdout)).toContain("Logged in");
   });
 });
-

@@ -59,8 +59,9 @@ const sorted = await client.searchProducts("bread", {
 const page1 = await client.searchProductsPage("cheese", 1, 10);
 const page2 = await client.searchProductsPage("cheese", 2, 10);
 
-// Browse by category
-const bakery = await client.browseProducts("groceries/bakery");
+// Browse by category ID (10051 = Groceries), then drill down via subCategories
+const groceries = await client.browseProducts("10051");
+const first = await client.browseProducts(groceries.subCategories![0]!.categoryId);
 ```
 
 ### Trolley Operations
