@@ -241,6 +241,7 @@ export interface Slot {
   endDateTime: string;
   shopByDateTime: string;
   status: string;
+  slotGridType: string;
   charge: Price;
   greenSlot: boolean;
   deliveryPassSlot: boolean;
@@ -985,15 +986,29 @@ export class WaitroseClient {
 
   /** Book a delivery/collection slot */
   async bookSlot(slotId: string, slotType: SlotType, addressId?: string): Promise<BookSlotResult> {
+    // BookSlotInput takes the slot's times rather than its ID, so resolve the ID
+    // (e.g. "2026-10-13_06:00_07:00") against that day's slot grid first.
+    const date = slotId.split("_")[0]!;
+    const days = await this.getSlotDays(slotType, date, undefined, addressId);
+    const day = days.find(d => d.slots.some(s => s.id === slotId));
+    const slot = day?.slots.find(s => s.id === slotId);
+    if (!day || !slot) {
+      throw new Error(`Slot ${slotId} not found for ${slotType}`);
+    }
+
     const result = await this.graphql<{ 
       data: { 
         bookSlot: BookSlotResult & { failures: ApiFailure[] | null };
       } 
     }>(QUERIES.BookSlot, {
       input: {
-        slotId,
+        customerOrderId: this.customerOrderId,
         slotType,
+        branchId: day.branchId,
         addressId,
+        startDateTime: slot.startDateTime,
+        endDateTime: slot.endDateTime,
+        slotGridType: slot.slotGridType,
       },
     });
 
