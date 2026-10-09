@@ -609,7 +609,7 @@ async function cmdSlot(args: string[], flags: Record<string, string | boolean>) 
 
 async function cmdSlots(args: string[], flags: Record<string, string | boolean>) {
   const json = flags.json === true;
-  const slotType = (flags.type as SlotType) || "DELIVERY";
+  const slotType = ((flags.type as string | undefined)?.toUpperCase() as SlotType) || "DELIVERY";
   const days = parseInt(flags.days as string || "7", 10);
 
   await withAuth(async (client) => {
@@ -671,8 +671,8 @@ async function cmdSlots(args: string[], flags: Record<string, string | boolean>)
 
 async function cmdBookSlot(args: string[], flags: Record<string, string | boolean>) {
   const slotId = args[0];
-  const slotType = (flags.type as SlotType) || "DELIVERY";
-  const addressId = flags.address as string;
+  const slotType = ((flags.type as string | undefined)?.toUpperCase() as SlotType) || "DELIVERY";
+  let addressId = flags.address as string | undefined;
   const json = flags.json === true;
 
   if (!slotId) {
@@ -681,6 +681,10 @@ async function cmdBookSlot(args: string[], flags: Record<string, string | boolea
   }
 
   await withAuth(async (client) => {
+    if (!addressId) {
+      const { profile } = await client.getAccountInfo();
+      addressId = profile.contactAddress?.id;
+    }
     const result = await client.bookSlot(slotId, slotType, addressId);
     
     if (json) {
